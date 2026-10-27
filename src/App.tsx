@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import Backdrop, { SCENES, type SceneId } from "./components/Backdrop";
+import Backdrop, { SCENES, WEATHERS, type SceneId, type WeatherId } from "./components/Backdrop";
 import Dedicate from "./components/Dedicate";
 import InlayCard from "./components/InlayCard";
 import Player from "./components/Player";
 import Splash from "./components/Splash";
+import StoryCard from "./components/StoryCard";
 import { songs } from "./data/songs";
 import { useYouTube } from "./hooks/useYouTube";
+import { ambientEngine, type AmbientMode } from "./lib/ambientSound";
 import { readDedication } from "./lib/dedication";
 
 const dedication = readDedication();
 
-// Open on the visitor's own hour: someone in Dubai at 11pm gets the hills at night.
+// Open on the visitor's own hour
 const hour = new Date().getHours();
 const startTime = hour < 7 ? "dawn" : hour < 16 ? "day" : hour < 19 ? "dusk" : "night";
 
@@ -20,21 +22,25 @@ function Chip({
   children,
   onClick,
   label,
+  active,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   label: string;
+  active?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="glass flex h-10 w-10 items-center justify-center rounded-full text-cream/70 transition hover:text-brass"
+      className={`glass flex h-10 items-center justify-center gap-1.5 rounded-full px-2.5 text-cream/75 transition hover:text-brass ${
+        active ? "border-brass/50 text-brass ring-1 ring-brass/30" : ""
+      }`}
     >
       <svg
         viewBox="0 0 24 24"
-        className="h-[18px] w-[18px]"
+        className="h-[18px] w-[18px] shrink-0"
         fill="none"
         stroke="currentColor"
         strokeWidth="1.4"
@@ -51,15 +57,40 @@ function Chip({
 export default function App() {
   const yt = useYouTube(songs, dedication?.song ?? 0);
   const [entered, setEntered] = useState(false);
-  const [scene, setScene] = useState<SceneId>("chowrasta");
+
+  // Restore persisted preferences from localStorage if present
+  const [scene, setScene] = useState<SceneId>(() => {
+    try {
+      const saved = localStorage.getItem("gorkhaland_scene");
+      if (saved === "chowrasta" || saved === "bazaar") return saved;
+    } catch (_) {}
+    return "chowrasta";
+  });
+
+  const [weather, setWeather] = useState<WeatherId>(() => {
+    try {
+      const saved = localStorage.getItem("gorkhaland_weather");
+      if (saved === "mist" || saved === "rain" || saved === "sun") return saved;
+    } catch (_) {}
+    return "mist";
+  });
+
+  const [ambient, setAmbient] = useState<AmbientMode>(() => {
+    try {
+      const saved = localStorage.getItem("gorkhaland_ambient");
+      if (saved === "rain" || saved === "mist" || saved === "kettle" || saved === "off") return saved;
+    } catch (_) {}
+    return "rain";
+  });
+
   const [songsOpen, setSongsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [storyOpen, setStoryOpen] = useState(false);
   const [idle, setIdle] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [apiSlow, setApiSlow] = useState(false);
   const fails = useRef(0);
 
-  // Keyboard handlers must see current values without resubscribing every render.
   const ytRef = useRef(yt);
   ytRef.current = yt;
 
@@ -69,11 +100,24 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.scene = scene;
+    try {
+      localStorage.setItem("gorkhaland_scene", scene);
+    } catch (_) {}
   }, [scene]);
 
-  // YouTube is blocked on some networks and in some regions. If the API never
-  // comes back, let people in anyway — a silent room beats a splash screen that
-  // never opens.
+  useEffect(() => {
+    document.documentElement.dataset.weather = weather;
+    try {
+      localStorage.setItem("gorkhaland_weather", weather);
+    } catch (_) {}
+  }, [weather]);
+
+  // Duck ambient sound when music is playing, raise slightly when paused
+  useEffect(() => {
+    if (!entered) return;
+    ambientEngine.setDucked(yt.playing);
+  }, [entered, yt.playing]);
+
   useEffect(() => {
     const t = setTimeout(() => setApiSlow(true), 7000);
     return () => clearTimeout(t);
@@ -86,10 +130,9 @@ export default function App() {
       if (e.key === "Escape") {
         setSongsOpen(false);
         setShareOpen(false);
+        setStoryOpen(false);
         return;
       }
-      // Never steal keys from a field being typed in, or from a focused control
-      // that already handles them — Space on a focused button would fire twice.
       if (el.closest("input, textarea, button, a, [contenteditable]")) return;
 
       const p = ytRef.current;
@@ -104,14 +147,14 @@ export default function App() {
         p.next();
       } else if (e.key === "p") {
         p.prev();
+      } else if (e.key === "s" || e.key === "S") {
+        setStoryOpen((s) => !s);
       }
     };
     addEventListener("keydown", onKey);
     return () => removeEventListener("keydown", onKey);
   }, [entered]);
 
-  // A song blocked in your region should not become a dead end: skip on, quietly.
-  // If the whole tape is blocked where you are, stop trying and say so.
   useEffect(() => {
     if (!yt.error) {
       fails.current = 0;
@@ -126,7 +169,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [yt.error, yt.next]);
 
-  // Sit still long enough and the hills settle. Music keeps playing.
   useEffect(() => {
     if (!entered) return;
     let t: number;
@@ -144,6 +186,27 @@ export default function App() {
     };
   }, [entered]);
 
+  const cycleAmbient = () => {
+    const modes: AmbientMode[] = ["rain", "mist", "kettle", "off"];
+    const nextIdx = (modes.indexOf(ambient) + 1) % modes.length;
+    const nextMode = modes[nextIdx];
+    setAmbient(nextMode);
+    ambientEngine.setMode(nextMode);
+    try {
+      localStorage.setItem("gorkhaland_ambient", nextMode);
+    } catch (_) {}
+  };
+
+  const cycleWeather = () => {
+    const nextIdx = (WEATHERS.findIndex((w) => w.id === weather) + 1) % WEATHERS.length;
+    setWeather(WEATHERS[nextIdx].id);
+  };
+
+  const cycleScene = () => {
+    const nextIdx = (SCENES.findIndex((s) => s.id === scene) + 1) % SCENES.length;
+    setScene(SCENES[nextIdx].id);
+  };
+
   const message =
     apiSlow && !yt.ready
       ? "यो नेटवर्कबाट युट्युब खुलेन — गीत बज्न सक्दैन।"
@@ -153,12 +216,19 @@ export default function App() {
           ? "यो गीत यहाँ बज्दैन — अर्को हालौं?"
           : undefined;
 
+  const ambientLabels: Record<AmbientMode, string> = {
+    rain: "हावापानी · Rain on tin",
+    mist: "हावापानी · Mountain mist",
+    kettle: "हावापानी · Simmering kettle",
+    off: "हावापानी · Muted",
+  };
+
   return (
     <>
-      <Backdrop scene={scene} />
+      <Backdrop scene={scene} weather={weather} />
 
-      {/* songs and send, kept off the player so the bar stays four controls wide */}
-      <div className="fixed top-5 left-5 z-20 flex gap-2 md:top-8 md:left-8">
+      {/* Left controls: Songs drawer + Send dedication */}
+      <div className="fixed top-4 left-4 z-20 flex gap-2 md:top-8 md:left-8">
         <Chip onClick={() => setSongsOpen(true)} label="गीतहरू · Songs">
           <path d="M4 6.5h13M4 12h13M4 17.5h8" />
           <circle cx="18.5" cy="16.5" r="2.5" />
@@ -170,11 +240,60 @@ export default function App() {
         </Chip>
       </div>
 
-      <div className="fixed top-5 right-5 z-20 md:top-8 md:right-8">
+      {/* Right controls: Ambient Sound + Weather + Scene */}
+      <div className="fixed top-4 right-4 z-20 flex gap-2 md:top-8 md:right-8">
+        {/* Ambient Sound Bed Cycle */}
+        <Chip onClick={cycleAmbient} label={ambientLabels[ambient]} active={ambient !== "off"}>
+          {ambient === "rain" && (
+            <>
+              <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242" />
+              <path d="M8 19v2M12 17v4M16 19v2" />
+            </>
+          )}
+          {ambient === "mist" && (
+            <>
+              <path d="M4 12h16M7 16h10M9 8h6" />
+            </>
+          )}
+          {ambient === "kettle" && (
+            <>
+              <path d="M4 19h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2-3H9L7 7H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2z" />
+              <circle cx="12" cy="13" r="3" />
+            </>
+          )}
+          {ambient === "off" && (
+            <>
+              <path d="M11 5L6 9H2v6h4l5 4V5z" />
+              <line x1="23" y1="9" x2="17" y2="15" />
+              <line x1="17" y1="9" x2="23" y2="15" />
+            </>
+          )}
+        </Chip>
+
+        {/* Weather Mode Cycle */}
         <Chip
-          onClick={() =>
-            setScene(SCENES[(SCENES.findIndex((s) => s.id === scene) + 1) % SCENES.length].id)
-          }
+          onClick={cycleWeather}
+          label={`मौसम · Weather: ${WEATHERS.find((w) => w.id === weather)?.en}`}
+        >
+          {weather === "mist" && <path d="M4 14h16M6 18h12M8 10h8" />}
+          {weather === "rain" && (
+            <>
+              <path d="M12 3v13" />
+              <path d="M8 12l4 4 4-4" />
+              <path d="M5 20h14" />
+            </>
+          )}
+          {weather === "sun" && (
+            <>
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+            </>
+          )}
+        </Chip>
+
+        {/* Scene Cycle */}
+        <Chip
+          onClick={cycleScene}
           label={`दृश्य · Scene: ${SCENES.find((s) => s.id === scene)?.en}`}
         >
           <rect x="3" y="5" width="18" height="14" rx="1.5" />
@@ -182,7 +301,7 @@ export default function App() {
         </Chip>
       </div>
 
-      <Player yt={yt} message={message} />
+      <Player yt={yt} message={message} onOpenStory={() => setStoryOpen(true)} />
 
       <InlayCard
         open={songsOpen}
@@ -194,9 +313,15 @@ export default function App() {
         }}
       />
 
+      <StoryCard
+        song={yt.song}
+        open={storyOpen}
+        onClose={() => setStoryOpen(false)}
+      />
+
       <Dedicate open={shareOpen} onClose={() => setShareOpen(false)} song={yt.song} />
 
-      {/* five minutes still, and the hills settle */}
+      {/* Five minutes still: the hills settle */}
       <div
         className={`pointer-events-none fixed inset-0 z-30 grid place-items-center bg-[#0a1610]/80 backdrop-blur-[3px] transition-opacity duration-[2000ms] ${
           idle ? "opacity-100" : "opacity-0"
@@ -212,10 +337,9 @@ export default function App() {
         dedication={dedication}
         song={songs[dedication?.song ?? 0]}
         onEnter={() => {
-          yt.play(); // must happen inside the tap handler — iOS gesture rule
+          yt.play(); // must happen inside user gesture for iOS / browsers
+          ambientEngine.start(ambient);
           setEntered(true);
-          // Clear the dedication from the address bar so whatever they share on
-          // from here is their own, not a copy of the one they were sent.
           if (dedication) history.replaceState(null, "", location.pathname);
         }}
       />

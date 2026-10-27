@@ -1,0 +1,22 @@
+# gorkha.land on the VPS. Caddy gets and renews TLS on its own.
+#   1. npm run build, copy dist/ to /srv/gorkha.land/dist
+#   2. run `node server/notes.mjs` (as a systemd service) from /srv/gorkha.land
+#   3. caddy run --config Caddyfile
+
+www.gorkha.land {
+	redir https://gorkha.land{uri} permanent
+}
+
+gorkha.land {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+
+	handle {
+		root * /srv/gorkha.land/dist
+		try_files {path} /index.html
+		file_server
+	}
+}

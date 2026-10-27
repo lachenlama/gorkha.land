@@ -8,9 +8,6 @@ import chowrastaPhoneNarrow from "../assets/chowrasta-phone-900.webp";
 import chowrastaPhoneWide from "../assets/chowrasta-phone-1350.webp";
 import chowrastaWide from "../assets/chowrasta-2400.webp";
 
-// The painting is the emotional core, so everything laid over it is mist and
-// grading only — no drawn furniture competing with it.
-
 // Three bands crossing at different speeds and heights. The tile is 900px and
 // the keyframe shifts exactly 900px, so each band wraps without a seam.
 const BANDS = [
@@ -26,8 +23,6 @@ export const SCENES = [
     en: "Chowrasta",
     narrow: chowrastaNarrow,
     wide: chowrastaWide,
-    // Composed in portrait for phones, rather than a landscape crop stretched
-    // to fit — the bench, the statue and the pony stay in frame together.
     portraitNarrow: chowrastaPhoneNarrow,
     portraitWide: chowrastaPhoneWide,
     alt: "Chowrasta in Darjeeling at golden hour — the bandstand, Bhanubhakta's statue, ponies and pigeons on the flagstones, Kanchenjunga beyond the pines.",
@@ -38,9 +33,6 @@ export const SCENES = [
     en: "Bazaar",
     narrow: bazaarNarrow,
     wide: bazaarWide,
-    // Composed in portrait for phones, rather than a landscape crop stretched
-    // to fit — the full street, gazebo and prayer flags stay in frame instead
-    // of being cropped off the sides.
     portraitNarrow: bazaarPhoneNarrow,
     portraitWide: bazaarPhoneWide,
     alt: "The market street below Chowrasta at dusk — a lit bakery and tea shop, wet cobbles, prayer flags, and lamps coming on across the hillside.",
@@ -49,7 +41,20 @@ export const SCENES = [
 
 export type SceneId = (typeof SCENES)[number]["id"];
 
-export default function Backdrop({ scene }: { scene: SceneId }) {
+export const WEATHERS = [
+  { id: "mist", ne: "कुहिरो", en: "Mist" },
+  { id: "rain", ne: "बर्षा", en: "Rain" },
+  { id: "sun", ne: "घाम", en: "Sun" },
+] as const;
+
+export type WeatherId = (typeof WEATHERS)[number]["id"];
+
+type Props = {
+  scene: SceneId;
+  weather?: WeatherId;
+};
+
+export default function Backdrop({ scene, weather = "mist" }: Props) {
   const [loaded, setLoaded] = useState<string[]>([]);
 
   return (
@@ -57,8 +62,7 @@ export default function Backdrop({ scene }: { scene: SceneId }) {
       className="fixed inset-0 -z-10 overflow-hidden bg-[#1b2a24]"
       style={{ filter: "var(--weather-filter)" }}
     >
-      {/* Both scenes stay mounted so switching is a true crossfade rather than a
-          flash of empty dark. The one you aren't looking at loads at low priority. */}
+      {/* Both scenes stay mounted so switching is a true crossfade */}
       {SCENES.map((s) => {
         const active = s.id === scene;
         const portrait = "portraitWide" in s ? s : null;
@@ -74,10 +78,6 @@ export default function Backdrop({ scene }: { scene: SceneId }) {
             <img
               src={s.wide}
               srcSet={`${s.narrow} 1280w, ${s.wide} 2400w`}
-              /* A cover-cropped 16:9 image on a portrait phone renders about
-                 twice as wide as the viewport, so 100vw would under-select and
-                 ship a soft image. Scenes with a real portrait crop (above)
-                 never fall through to this — it's only for ones that don't. */
               sizes="(orientation: portrait) 200vw, 100vw"
               alt={active ? s.alt : ""}
               fetchPriority={active ? "high" : "low"}
@@ -94,7 +94,7 @@ export default function Backdrop({ scene }: { scene: SceneId }) {
         );
       })}
 
-      {/* hour of the day */}
+      {/* hour of the day tint */}
       <div
         className="absolute inset-0 mix-blend-multiply"
         style={{
@@ -128,8 +128,27 @@ export default function Backdrop({ scene }: { scene: SceneId }) {
         ))}
       </div>
 
-      {/* scrim: the pavement is pale and the UI sits on cream text.
-          This is legibility, not mood — without it the footer disappears. */}
+      {/* Rain animation layer */}
+      {weather === "rain" && (
+        <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden opacity-90" aria-hidden>
+          <div className="rain-layer absolute inset-0" />
+          <div className="rain-layer-dense absolute inset-0 opacity-75" />
+        </div>
+      )}
+
+      {/* Sun rays layer */}
+      {weather === "sun" && (
+        <div
+          className="pointer-events-none absolute inset-0 mix-blend-screen opacity-40 transition-opacity duration-1000"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(245, 183, 79, 0.45) 0%, rgba(245, 183, 79, 0.1) 40%, transparent 70%)",
+          }}
+          aria-hidden
+        />
+      )}
+
+      {/* scrim for readability */}
       <div
         className="absolute inset-0"
         style={{
@@ -138,7 +157,7 @@ export default function Backdrop({ scene }: { scene: SceneId }) {
         }}
       />
 
-      {/* vignette, and grain to marry the overlays back into the canvas */}
+      {/* vignette and grain */}
       <div
         className="absolute inset-0"
         style={{ boxShadow: "inset 0 0 190px 60px rgba(14,24,19,.55)" }}
