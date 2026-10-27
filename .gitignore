@@ -9,3 +9,6 @@ dist
 
 .vercel
 .env*
+
+# Notes left on the site. Personal data: never commit.
+data/

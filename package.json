@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host",
+    "notes": "node server/notes.mjs"
   },
   "dependencies": {
     "react": "^19.2.8",

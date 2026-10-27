@@ -1,21 +1,19 @@
+import { useEffect, useState } from "react";
 import type { useYouTube } from "../hooks/useYouTube";
 
 type Props = {
   yt: ReturnType<typeof useYouTube>;
   message?: string;
+  onOpenStory?: () => void;
 };
 
 const mmss = (s: number) =>
   `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
-/* The disc is the YouTube iframe, cropped to a circle and turning. It keeps the
-   player rendered at full size while reading as the thing that's actually
-   playing — one object doing both jobs instead of a hidden frame plus a fake. */
+/* The disc is the YouTube iframe, cropped to a circle and turning. */
 function Disc({ hostRef, playing }: { hostRef: React.RefObject<HTMLDivElement | null>; playing: boolean }) {
   return (
     <div className="relative h-14 w-14 shrink-0 md:h-16 md:w-16">
-      {/* The mask is not decoration: Safari drops border-radius clipping on a
-          rotating composited child, and the video's square corners show through. */}
       <div
         className="absolute inset-0 overflow-hidden rounded-full"
         style={{ WebkitMaskImage: "radial-gradient(circle, #fff 99%, transparent 100%)" }}
@@ -27,7 +25,6 @@ function Disc({ hostRef, playing }: { hostRef: React.RefObject<HTMLDivElement | 
           />
         </div>
       </div>
-      {/* sheen and spindle sit still while the disc turns under them */}
       <div
         className="pointer-events-none absolute inset-0 rounded-full"
         style={{ background: "radial-gradient(circle, transparent 26%, rgba(6,12,9,.45) 78%)" }}
@@ -38,11 +35,31 @@ function Disc({ hostRef, playing }: { hostRef: React.RefObject<HTMLDivElement | 
   );
 }
 
-export default function Player({ yt, message }: Props) {
+export default function Player({ yt, message, onOpenStory }: Props) {
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Cassette tape label toast on song change
+  useEffect(() => {
+    if (!yt.song) return;
+    const side = yt.index < 4 ? "साइड क" : "साइड ख";
+    setToast(`${side} · ${yt.song.artistNe}`);
+    const t = setTimeout(() => setToast(null), 3400);
+    return () => clearTimeout(t);
+  }, [yt.song?.id, yt.index]);
+
   const pct = yt.duration > 0 ? Math.min(100, (yt.time / yt.duration) * 100) : 0;
 
   return (
-    <section className="bar" aria-label="Player">
+    <section className="bar relative" aria-label="Player">
+      {/* Cassette Tape J-Card Label Toast */}
+      {toast && (
+        <div className="toast-slide pointer-events-none absolute -top-10 left-1/2 z-30">
+          <div className="rounded-[3px] border border-tea/30 bg-[#f4e8d7] px-3.5 py-1 text-tea shadow-lg">
+            <p className="hand text-[13px] font-bold tracking-wide">{toast}</p>
+          </div>
+        </div>
+      )}
+
       {message && (
         <p className="ne mb-2 px-4 text-center text-[12px] text-[#e2a49f]" role="status">
           {message}
@@ -54,9 +71,21 @@ export default function Player({ yt, message }: Props) {
           <Disc hostRef={yt.hostRef} playing={yt.playing} />
 
           <div className="min-w-0 flex-1">
-            <h2 className="ne truncate text-[15px] leading-tight text-cream md:text-[17px]">
-              {yt.song.titleNe}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2 className="ne truncate text-[15px] leading-tight text-cream md:text-[17px]">
+                {yt.song.titleNe}
+              </h2>
+              {yt.song.story && onOpenStory && (
+                <button
+                  onClick={onOpenStory}
+                  title="गीतको कथा · Story"
+                  aria-label="Read memory story"
+                  className="rounded border border-brass/40 bg-brass/10 px-1.5 py-0.5 text-[10px] text-brass transition hover:bg-brass/25"
+                >
+                  कथा
+                </button>
+              )}
+            </div>
             <p className="truncate font-display text-[11px] text-cream/45 italic md:text-[12.5px]">
               {yt.song.title} · {yt.song.artist}
             </p>
@@ -84,8 +113,7 @@ export default function Player({ yt, message }: Props) {
           </span>
         </div>
 
-        {/* hairline progress: painted bars under a transparent native input, so
-            dragging, arrow keys and screen readers all still work */}
+        {/* hairline progress */}
         <div className="group relative mt-2.5 flex h-3 items-center px-0.5">
           <div className="absolute inset-x-0.5 h-px bg-cream/15" />
           <div className="absolute left-0.5 h-px bg-brass/80" style={{ width: `${pct}%` }} />

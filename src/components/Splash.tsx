@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Song } from "../data/songs";
 import type { Dedication } from "../lib/dedication";
 
@@ -9,17 +10,13 @@ type Props = {
   song: Song;
 };
 
-// NOTE: every Nepali line here should be checked by someone from the hills before
-// launch. Written Nepali carries register the way English carries accent, and the
-// hills' Nepali is not Kathmandu broadcast Nepali.
-//
-// This goes double for the identity lines. The site names itself गोर्खाल्याण्ड and
-// speaks to a home that has never been called by its own name on paper — that is
-// a sentence the community gets to phrase, not a document. Keep it at belonging
-// and recognition; the moment it reads as a slogan, the room becomes an argument
-// and stops being the one place that isn't one.
-
 export default function Splash({ open, ready, onEnter, dedication, song }: Props) {
+  const [puffs, setPuffs] = useState<number[]>([]);
+
+  const handleGlassTap = () => {
+    setPuffs((p) => [...p, Date.now()]);
+  };
+
   return (
     <div
       inert={!open}
@@ -46,32 +43,46 @@ export default function Splash({ open, ready, onEnter, dedication, song }: Props
       </div>
 
       <div className="relative px-8 text-center">
-        {/* a glass, not a cup — that is how the hills serve tea */}
-        <svg
-          viewBox="0 0 120 130"
-          className="mx-auto mb-7 h-28 w-24"
-          fill="none"
-          stroke="var(--color-cream)"
-          strokeWidth="2"
-          strokeLinecap="round"
-          aria-hidden
+        {/* a glass, not a cup — tapping it puffs fresh steam */}
+        <button
+          onClick={handleGlassTap}
+          type="button"
+          aria-label="A glass of hot chiya"
+          title="चियाको गिलास · Tap for steam"
+          className="group mx-auto mb-7 block cursor-pointer transition-transform hover:scale-105"
         >
-          <g opacity="0.65">
-            {[0, 1, 2].map((i) => (
-              <path
-                key={i}
-                d={`M${44 + i * 14} 46 c-6 -8 6 -14 0 -22`}
-                style={{ animation: `steam 4.5s ease-out ${i * 1.4}s infinite` }}
-              />
-            ))}
-          </g>
-          <path d="M34 58 h52 l-9 56 h-34 Z" />
-          <path d="M37 74 h46" opacity="0.5" />
-        </svg>
+          <svg
+            viewBox="0 0 120 130"
+            className="mx-auto h-28 w-24"
+            fill="none"
+            stroke="var(--color-cream)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden
+          >
+            <g opacity="0.65">
+              {[0, 1, 2].map((i) => (
+                <path
+                  key={i}
+                  d={`M${44 + i * 14} 46 c-6 -8 6 -14 0 -22`}
+                  style={{ animation: `steam 4.5s ease-out ${i * 1.4}s infinite` }}
+                />
+              ))}
+              {puffs.slice(-3).map((id, idx) => (
+                <path
+                  key={id}
+                  d={`M${51 + idx * 9} 46 c-8 -12 8 -18 0 -30`}
+                  className="steam-puff stroke-brass"
+                  strokeWidth="2.5"
+                />
+              ))}
+            </g>
+            <path d="M34 58 h52 l-9 56 h-34 Z" className="transition group-hover:stroke-brass" />
+            <path d="M37 74 h46" opacity="0.5" />
+          </svg>
+        </button>
 
-        {/* Longer than भञ्ज्याङ was, so it steps down on narrow phones rather than
-            running off the frame. The domain is the Roman wordmark — .land does
-            the work, so it stays lowercase and unspaced enough to read as one word. */}
+        {/* The domain is the Roman wordmark */}
         <h1 className="ne print text-[2.4rem] text-cream sm:text-5xl md:text-6xl">
           गोर्खाल्याण्ड
         </h1>
@@ -80,7 +91,6 @@ export default function Splash({ open, ready, onEnter, dedication, song }: Props
         </p>
 
         {dedication ? (
-          // Someone was handed this link. Open on them, not on the site.
           <div className="mx-auto mt-8 max-w-xs rotate-[-1deg] bg-cream px-5 py-4 text-tea shadow-[0_14px_36px_rgba(0,0,0,.45)]">
             <p className="hand text-[13px] text-gumba">
               {dedication.from ? `${dedication.from} बाट` : "कसैबाट"}
@@ -110,7 +120,6 @@ export default function Splash({ open, ready, onEnter, dedication, song }: Props
           {!ready ? "पर्खनुहोस्…" : dedication ? "सुन्नुहोस्" : "भित्र आउनुहोस्"}
         </button>
 
-        {/* A limitation you name becomes part of the room. One you hide becomes a bug. */}
         <p className="ne mx-auto mt-8 max-w-xs text-[13px] leading-relaxed text-cream/40">
           यो झ्याल खुला राख्नुहोला
           <span className="mt-1 block font-sans text-[11.5px] not-italic">
@@ -118,10 +127,6 @@ export default function Splash({ open, ready, onEnter, dedication, song }: Props
           </span>
         </p>
 
-        {/* The one statement of who this is for. It sits on language and place,
-            never on one ethnicity — the thread running through Tamang, Rai, Limbu,
-            Gurung, Newar, Sherpa, Bhutia, Kami, Damai, Sarki and the Lepcha who
-            were here first is Nepali, not any single group's iconography. */}
         <p className="ne mx-auto mt-7 max-w-xs text-[13.5px] leading-relaxed text-cream/45">
           हाम्रो पहाड, हाम्रो भाषा, हाम्रो गीत।
           <span className="mt-1 block font-sans text-[11.5px] not-italic">
