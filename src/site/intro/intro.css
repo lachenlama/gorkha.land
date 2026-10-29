@@ -1,0 +1,110 @@
+/* Keyframes for the intro and end panel. Everything else is Tailwind in the components. */
+
+@keyframes i-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes i-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes i-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+}
+/* "buffering…": the dots arrive one by one, every 300 ms */
+@keyframes i-on2 {
+  0% {
+    opacity: 0;
+  }
+  33.3% {
+    opacity: 1;
+  }
+}
+@keyframes i-on3 {
+  0% {
+    opacity: 0;
+  }
+  66.6% {
+    opacity: 1;
+  }
+}
+/* the counter takes your light: a lamp glow behind the number for 600 ms */
+@keyframes i-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+}
+@keyframes i-far {
+  from {
+    opacity: 0;
+    scale: 0.4;
+  }
+}
+
+.i-fade {
+  animation: i-fade var(--dur, 800ms) ease both;
+}
+.i-rise {
+  animation: i-rise 1200ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.i-up {
+  animation: i-up 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.i-dot2 {
+  animation: i-on2 900ms steps(1) infinite;
+}
+.i-dot3 {
+  animation: i-on3 900ms steps(1) infinite;
+}
+.i-toast {
+  animation: i-fade 200ms both;
+}
+.i-glow {
+  animation: i-glow 600ms ease-out both;
+}
+.i-far {
+  animation: i-far 1400ms ease-out both;
+}
+
+/* Devanagari headlines: .ne's 1.85 line height is too airy at display sizes. */
+.i-root .i-tight {
+  line-height: 1.4;
+}
+.i-root .i-shadow {
+  text-shadow: 0 2px 24px rgba(13, 24, 19, 0.9);
+}
+
+/* Reduced motion: the same words, opacity only. */
+@media (prefers-reduced-motion: reduce) {
+  .i-rise,
+  .i-up {
+    animation: i-fade 200ms both;
+    animation-delay: 0ms !important;
+  }
+  .i-fade,
+  .i-far {
+    animation: i-fade 200ms both;
+  }
+  .i-dot2,
+  .i-dot3,
+  .i-glow {
+    animation: none;
+  }
+  .i-glow {
+    display: none;
+  }
+}

@@ -1,21 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import bazaarWide from "../assets/bazaar-2400.webp";
 import hills1280 from "../assets/hills-1280.webp";
 import hills1792 from "../assets/hills-1792.webp";
 import hillsPhone from "../assets/hills-phone-768.webp";
 import home1376 from "../assets/home-1376.webp";
 import home960 from "../assets/home-960.webp";
+import AiEra from "./deck/AiEra";
+import { Chapter, CHAPTERS } from "./deck/chapters";
+import JoinCounter from "./deck/Counter";
+import Question from "./deck/Question";
+import ReturningPill from "./deck/ReturningPill";
+import { reducedMotion, useToast } from "./deck/toast";
+import Umbrella from "./deck/Umbrella";
+import Intro, { type IntroPhase, type IntroResult } from "./intro/Intro";
+import { getLights, readMyLight, type Lights } from "./lights";
 import NoteForm, { type Role } from "./NoteForm";
-
-const CHAPTERS = [
-  { id: "note", n: "01", en: "The note" },
-  { id: "why", n: "02", en: "Why now" },
-  { id: "movement", n: "03", en: "The movement" },
-  { id: "jamghat", n: "04", en: "First product" },
-  { id: "roadmap", n: "05", en: "What's next" },
-  { id: "join", n: "06", en: "Join in" },
-  { id: "leave-a-note", n: "07", en: "Your note" },
-] as const;
 
 function useScrollUi() {
   const [progress, setProgress] = useState(0);
@@ -64,15 +63,39 @@ function useScrollUi() {
   return { progress, active };
 }
 
-function Chapter({ n, title, ne, light }: { n: string; title: string; ne: string; light?: boolean }) {
+/** Where Kanchenjunga sits on screen: the same cover-fit maths the game uses. */
+function peakOnScreen() {
+  const img = document.getElementById("hero-img") as HTMLImageElement | null;
+  if (!img?.naturalWidth) return null;
+  const [W, H, iw, ih] = [img.clientWidth, img.clientHeight, img.naturalWidth, img.naturalHeight];
+  const [px, py] = getComputedStyle(img).objectPosition.split(" ").map((v) => parseFloat(v) / 100);
+  const [nx, ny] = matchMedia("(orientation: portrait)").matches ? [0.58, 0.19] : [0.63, 0.17];
+  const s = Math.max(W / iw, H / ih);
+  return { x: (W - iw * s) * px + nx * iw * s, y: (H - ih * s) * py + ny * ih * s };
+}
+
+/** Easter egg 7: "No politics." gives itself away on hover, focus or tap. */
+function NoPolitics() {
+  const [on, setOn] = useState(false);
+  const timer = useRef(0);
+  const tap = () => {
+    setOn(true);
+    clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setOn(false), 3000);
+  };
   return (
-    <div data-reveal className="mb-12 flex items-baseline gap-4 md:mb-16">
-      <span className={`font-display text-sm tracking-[0.3em] ${light ? "text-gumba" : "text-brass"}`}>{n}</span>
-      <span className={`h-px w-10 ${light ? "bg-gumba/40" : "bg-brass/40"}`} />
-      <span className={`text-xs tracking-[0.25em] uppercase ${light ? "text-ink/60" : "text-cream/55"}`}>
-        {title} · <span className="ne tracking-normal normal-case">{ne}</span>
-      </span>
-    </div>
+    <button
+      type="button"
+      aria-live="polite"
+      className="cursor-default"
+      onMouseEnter={() => setOn(true)}
+      onMouseLeave={() => setOn(false)}
+      onFocus={() => setOn(true)}
+      onBlur={() => setOn(false)}
+      onClick={tap}
+    >
+      {on ? "No politics. (Except at the chiya dokan.)" : "No politics."}
+    </button>
   );
 }
 
@@ -80,18 +103,80 @@ export default function Site() {
   const { progress, active } = useScrollUi();
   const [english, setEnglish] = useState(false);
   const [role, setRole] = useState<Role | "">("");
+  const [toast, toastView] = useToast();
+
+  // The intro game runs over the hero for first-time visitors (or with ?play).
+  const [mine] = useState(readMyLight);
+  const [intro, setIntro] = useState(() => !mine || location.search.includes("play"));
+  const [replay, setReplay] = useState(false);
+  const [phase, setPhase] = useState<IntroPhase | "off">(intro ? "question" : "off");
+  const [ranIntro, setRanIntro] = useState(intro); // kenburns stays off once the game has used the hero
+  const [lights, setLights] = useState<Lights | null>(null);
+  useEffect(() => void getLights().then(setLights), []);
 
   const joinAs = (r: Role) => {
     setRole(r);
     document.getElementById("leave-a-note")?.scrollIntoView();
   };
 
+  const play = () => {
+    scrollTo({ top: 0, behavior: "instant" });
+    setReplay(true);
+    setRanIntro(true);
+    setIntro(true);
+    setPhase("question");
+  };
+
+  const done = (r: IntroResult) => {
+    setIntro(false);
+    setPhase("off");
+    if (r) setLights((l) => l && { ...l, total: l.total + 1 });
+  };
+
+  // Easter egg 3: five taps on the nav name within 2 s cut the power.
+  const [dark, setDark] = useState(false);
+  const logoTaps = useRef<number[]>([]);
+  const logoTap = () => {
+    const now = Date.now();
+    logoTaps.current = [...logoTaps.current.filter((t) => now - t < 2000), now];
+    if (logoTaps.current.length < 5) return;
+    logoTaps.current = [];
+    const say = () => toast("बत्ती गयो… बत्ती आयो!", "Power cut. And it's back. Keep the candle out anyway.");
+    if (reducedMotion()) return say();
+    setDark(true);
+    setTimeout(say, 1200);
+  };
+
+  // Easter egg 6: double-tap the sky above the copy and Kanchenjunga catches the light.
+  const [bloom, setBloom] = useState<{ x: number; y: number } | null>(null);
+  const lastTap = useRef({ t: 0, x: 0, y: 0 });
+  const heroTap = (e: React.PointerEvent<HTMLElement>) => {
+    const prev = lastTap.current;
+    lastTap.current = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+    const sky = e.clientY - e.currentTarget.getBoundingClientRect().top < e.currentTarget.clientHeight * 0.35;
+    const again = e.timeStamp - prev.t < 350 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 40;
+    if (phase !== "off" || !sky || !again || (e.target as Element).closest("h1,p,a,button")) return;
+    lastTap.current.t = 0;
+    toast("आज कन्चनजङ्घा देखियो! फोटो खिच्नुस्, भोलि कुइरो लाग्छ।", "Kanchenjunga is out today! Take the photo. Tomorrow there'll be fog.");
+    if (!reducedMotion()) setBloom(peakOnScreen());
+  };
+
   return (
     <>
+      {intro && <Intro replay={replay} onPhase={setPhase} onDone={done} />}
+      {dark && <div className="outage" onAnimationEnd={() => setDark(false)} aria-hidden />}
+      {toastView}
+      {mine && !ranIntro && <ReturningPill mine={mine} total={lights?.total} onPlay={play} />}
+
       {/* ---- nav ----------------------------------------------------------- */}
-      <header className="fixed inset-x-0 top-0 z-40 border-b border-cream/5 bg-ink/55 backdrop-blur-md">
+      <header
+        aria-hidden={phase !== "off"}
+        className={`fixed inset-x-0 top-0 z-40 border-b border-cream/5 bg-ink/55 backdrop-blur-md transition-opacity duration-500 ${
+          phase !== "off" ? "pointer-events-none opacity-0" : ""
+        }`}
+      >
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 md:px-8">
-          <a href="#top" className="flex items-baseline gap-2">
+          <a href="#top" onClick={logoTap} className="flex items-baseline gap-2">
             <span className="ne text-lg text-cream">गोर्खाल्याण्ड</span>
             <span className="font-display text-sm text-cream/50">gorkha.land</span>
           </a>
@@ -117,7 +202,13 @@ export default function Site() {
       </header>
 
       {/* ---- chapter rail (desktop) ---------------------------------------- */}
-      <nav aria-label="Chapters" className="fixed top-1/2 right-6 z-30 hidden -translate-y-1/2 flex-col gap-3 xl:flex">
+      <nav
+        aria-label="Chapters"
+        aria-hidden={phase !== "off"}
+        className={`fixed top-1/2 right-6 z-30 hidden -translate-y-1/2 flex-col gap-3 transition-opacity duration-500 xl:flex ${
+          phase !== "off" ? "pointer-events-none opacity-0" : ""
+        }`}
+      >
         {CHAPTERS.map((c) => (
           <a key={c.id} href={`#${c.id}`} className="group flex items-center justify-end gap-3">
             <span
@@ -138,27 +229,39 @@ export default function Site() {
 
       <main id="top">
         {/* ---- 00 hero ------------------------------------------------------ */}
-        <section className="relative grid min-h-svh place-items-end overflow-hidden">
+        <section
+          data-intro={phase}
+          onPointerUp={heroTap}
+          className="relative grid min-h-svh place-items-end overflow-hidden"
+        >
           <picture className="absolute inset-0">
             <source media="(orientation: portrait)" srcSet={hillsPhone} />
             <img
+              id="hero-img"
               src={hills1280}
               srcSet={`${hills1280} 1280w, ${hills1792} 1792w`}
               sizes="100vw"
               alt="The Darjeeling hills at blue hour: Kanchenjunga catching the last light above the mist, town lights coming on along the ridge, and a young person on a rooftop with a glowing phone."
-              className="kenburns h-full w-full object-cover object-[50%_20%] landscape:object-[72%_50%]"
+              className={`${ranIntro ? "" : "kenburns "}h-full w-full object-cover object-[50%_20%] landscape:object-[80%_50%]`}
             />
           </picture>
+          {bloom && (
+            <div className="bloom" style={{ left: bloom.x, top: bloom.y }} onAnimationEnd={() => setBloom(null)} aria-hidden />
+          )}
           {/* The painting has its own mist; one faint band keeps the valley moving. */}
           <div
-            className="mist opacity-30"
+            className="mist hero-copy opacity-30"
             style={{ top: "38%", height: "28vh", ["--dur" as string]: "140s" }}
             aria-hidden
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/35 to-transparent" aria-hidden />
-          <div className="absolute inset-0 hidden bg-gradient-to-r from-ink/70 via-ink/20 to-transparent md:block" aria-hidden />
+          <div className="hero-shade absolute inset-0 bg-gradient-to-t from-ink via-ink/35 to-transparent" aria-hidden />
+          <div className="hero-shade absolute inset-0 hidden bg-gradient-to-r from-ink/70 via-ink/20 to-transparent md:block" aria-hidden />
 
-          <div className="relative mx-auto w-full max-w-6xl px-4 pt-32 pb-16 md:px-8 md:pb-24">
+          {/* Re-keyed when the intro hands over, so the copy rises as the game's last frame becomes the hero. */}
+          <div
+            key={phase === "off" ? "live" : "held"}
+            className="hero-copy relative mx-auto w-full max-w-6xl px-4 pt-32 pb-16 md:px-8 md:pb-24"
+          >
             <p className="rise mb-6 flex flex-wrap items-center gap-3 text-sm text-cream/75">
               <span className="ne text-base text-lamp">नमस्ते,</span>
               <span>from the hills</span>
@@ -194,7 +297,7 @@ export default function Site() {
           </div>
           <a
             href="#note"
-            className="absolute bottom-6 left-1/2 hidden -translate-x-1/2 text-xs tracking-[0.3em] text-cream/50 uppercase md:block"
+            className="hero-copy absolute bottom-6 left-1/2 hidden -translate-x-1/2 text-xs tracking-[0.3em] text-cream/50 uppercase md:block"
           >
             Scroll ↓
           </a>
@@ -203,7 +306,7 @@ export default function Site() {
         {/* ---- 01 the note -------------------------------------------------- */}
         <section id="note" className="relative bg-pine py-24 md:py-36">
           <div className="mx-auto max-w-6xl px-4 md:px-8">
-            <Chapter n="01" title="The note" ne="चिठी" />
+            <Chapter id="note" />
             <article data-reveal className="paper relative mx-auto max-w-3xl rounded-sm px-6 py-12 sm:px-12 md:px-16 md:py-16">
               <div className="postmark absolute top-6 right-6 hidden h-24 w-24 rotate-[-12deg] place-items-center text-center text-gumba/70 sm:grid">
                 <span className="ne text-xs leading-tight">
@@ -289,10 +392,13 @@ export default function Site() {
           </div>
         </section>
 
-        {/* ---- 02 why now --------------------------------------------------- */}
-        <section id="why" className="grain relative bg-ink py-24 md:py-36">
+        {/* ---- 02 the question ---------------------------------------------- */}
+        <Question />
+
+        {/* ---- 03 why now --------------------------------------------------- */}
+        <section id="why" className="relative bg-pine py-24 md:py-36">
           <div className="mx-auto max-w-6xl px-4 md:px-8">
-            <Chapter n="02" title="Why now" ne="किन अहिले" />
+            <Chapter id="why" />
             <h2 data-reveal className="font-display max-w-4xl text-4xl leading-tight md:text-6xl">
               Our hills are online. <span className="text-cream/45">Our economy isn't.</span>
             </h2>
@@ -335,14 +441,16 @@ export default function Site() {
                 </div>
               ))}
             </div>
+
+            <AiEra />
           </div>
         </section>
 
-        {/* ---- 03 the movement --------------------------------------------- */}
+        {/* ---- 04 the movement --------------------------------------------- */}
         <section id="movement" className="relative bg-tea py-24 md:py-36">
-          <div className="ridge absolute inset-x-0 -top-px h-16 rotate-180 bg-ink md:h-24" aria-hidden />
+          <div className="ridge absolute inset-x-0 -top-px h-16 rotate-180 bg-pine md:h-24" aria-hidden />
           <div className="mx-auto max-w-6xl px-4 md:px-8">
-            <Chapter n="03" title="The movement" ne="अभियान" />
+            <Chapter id="movement" />
             <h2 data-reveal className="font-display max-w-4xl text-4xl leading-tight md:text-6xl">
               A digital movement for the hills. <em className="text-lamp">Built on six promises.</em>
             </h2>
@@ -371,12 +479,15 @@ export default function Site() {
           </div>
         </section>
 
-        {/* ---- 04 jamghat --------------------------------------------------- */}
+        {/* ---- 05 the umbrella ---------------------------------------------- */}
+        <Umbrella toast={toast} />
+
+        {/* ---- 06 jamghat --------------------------------------------------- */}
         <section id="jamghat" className="relative overflow-hidden py-24 md:py-36">
           <img src={bazaarWide} alt="" className="absolute inset-0 h-full w-full object-cover opacity-30" aria-hidden />
-          <div className="absolute inset-0 bg-gradient-to-b from-tea via-ink/90 to-ink" aria-hidden />
+          <div className="absolute inset-0 bg-gradient-to-b from-ink via-ink/90 to-ink" aria-hidden />
           <div className="relative mx-auto max-w-6xl px-4 md:px-8">
-            <Chapter n="04" title="First product" ne="पहिलो कदम" />
+            <Chapter id="jamghat" />
             <div className="grid items-center gap-16 lg:grid-cols-[1.1fr_0.9fr]">
               <div>
                 <p data-reveal className="ne text-3xl text-lamp">
@@ -422,6 +533,9 @@ export default function Site() {
                     Tell us about your place →
                   </button>
                 </div>
+                {lights && lights.waitlist >= 25 && (
+                  <p className="mt-4 text-sm text-cream/55">{lights.waitlist} people are waiting for the first lamp.</p>
+                )}
               </div>
 
               {/* phone mock: an illustration of the product, with fictional venues */}
@@ -473,61 +587,17 @@ export default function Site() {
           </div>
         </section>
 
-        {/* ---- 05 roadmap --------------------------------------------------- */}
-        <section id="roadmap" className="grain relative bg-ink py-24 md:py-36">
-          <div className="mx-auto max-w-6xl px-4 md:px-8">
-            <Chapter n="05" title="What's next" ne="अगाडिको बाटो" />
-            <h2 data-reveal className="font-display max-w-3xl text-4xl leading-tight md:text-6xl">
-              One brand. One product at a time.
-            </h2>
-            <p data-reveal className="mt-6 max-w-2xl text-lg text-cream/65">
-              Every product has a Nepali name, uses the same account and the same points, and is checked by the same
-              people. We add the next one only when the last one is working.
-            </p>
-
-            <ol className="relative mt-16 space-y-4 before:absolute before:top-2 before:bottom-2 before:left-[7px] before:w-px before:bg-cream/15">
-              {[
-                ["जमघट", "Jamghat", "Cafés, crews and hangouts. Check in, level up, hold your spot.", "Building now"],
-                ["काम", "Kaam", "Jobs, gigs, internships and scholarships for the hills, all checked.", "Next"],
-                ["पहाड Live", "Pahad Live", "Roads, landslides, water and power, reported by people on the ground.", "Later"],
-                ["हाट", "Haat", "Tea, churpi, dalle and crafts, straight from the people who make them.", "Later"],
-                ["बास", "Baas", "Verified homestays, with your advance payment protected.", "Later"],
-              ].map(([ne, en, d, s], i) => (
-                <li key={en} data-reveal style={{ ["--d" as string]: `${i * 90}ms` }} className="relative pl-10">
-                  <span
-                    className={`absolute top-2 left-0 h-[15px] w-[15px] rounded-full border-2 ${
-                      i === 0 ? "border-lamp bg-lamp" : "border-cream/30 bg-ink"
-                    }`}
-                  />
-                  <div className="flex flex-col gap-2 rounded-2xl border border-cream/10 p-6 transition hover:bg-cream/[0.03] md:flex-row md:items-center md:gap-8">
-                    <div className="md:w-56">
-                      <p className="ne text-2xl text-cream">{ne}</p>
-                      <p className="text-sm text-cream/50">{en}</p>
-                    </div>
-                    <p className="flex-1 text-cream/70">{d}</p>
-                    <span
-                      className={`self-start rounded-full px-3 py-1 text-xs md:self-center ${
-                        i === 0 ? "bg-lamp text-ink" : "border border-cream/20 text-cream/60"
-                      }`}
-                    >
-                      {s}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-
-        {/* ---- 06 join ------------------------------------------------------ */}
+        {/* ---- 07 join ------------------------------------------------------ */}
         <section id="join" className="relative bg-tea py-24 md:py-36">
           <div className="mx-auto max-w-6xl px-4 md:px-8">
-            <Chapter n="06" title="Join in" ne="सँगै हिँडौँ" />
+            <Chapter id="join" />
             <h2 data-reveal className="font-display max-w-3xl text-4xl leading-tight md:text-6xl">
               A movement needs people. <em className="text-lamp">Here's your place in it.</em>
             </h2>
 
-            <div className="mt-16 grid gap-6 sm:grid-cols-2">
+            <JoinCounter lights={lights} onPlay={play} />
+
+            <div className="mt-6 grid gap-6 sm:grid-cols-2 [h2+&]:mt-16">
               {(
                 [
                   ["student", "Students & Gen Z", "Become a founding member or a campus ambassador. Get a permanent founder badge and help shape the app.", "I want in"],
@@ -556,10 +626,10 @@ export default function Site() {
           </div>
         </section>
 
-        {/* ---- 07 leave a note --------------------------------------------- */}
+        {/* ---- 08 leave a note --------------------------------------------- */}
         <section id="leave-a-note" className="relative bg-pine py-24 md:py-36">
           <div className="mx-auto max-w-6xl px-4 md:px-8">
-            <Chapter n="07" title="Your note" ne="तपाईंको कुरा" />
+            <Chapter id="leave-a-note" />
             <div className="grid gap-16 lg:grid-cols-[0.8fr_1.2fr]">
               <div>
                 <h2 data-reveal className="font-display text-4xl leading-tight md:text-5xl">
@@ -599,7 +669,9 @@ export default function Site() {
           <p className="font-display mt-2 text-xl text-cream/50 italic">We belong here.</p>
           <div className="mt-16 flex flex-col justify-between gap-4 border-t border-cream/10 pt-8 text-sm text-cream/45 md:flex-row">
             <p>© 2026 gorkha.land · Made in the hills</p>
-            <p>No ads. No tracking. No politics.</p>
+            <p>
+              No ads. No tracking. <NoPolitics />
+            </p>
           </div>
         </div>
       </footer>

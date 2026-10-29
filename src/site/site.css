@@ -156,3 +156,128 @@ body {
     transition: none;
   }
 }
+
+/* ---- the intro hands over to the hero ------------------------------------- */
+
+.hero-shade,
+.hero-copy {
+  transition: opacity 0.8s ease;
+}
+/* While the game owns the hero, only the painting shows; the shade returns for the end panel. */
+[data-intro="question"] .hero-shade,
+[data-intro="playing"] .hero-shade {
+  opacity: 0;
+}
+[data-intro]:not([data-intro="off"]) .hero-copy {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---- lamps ----------------------------------------------------------------- */
+
+:where(a, button, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-lamp);
+  outline-offset: 2px;
+}
+
+.glow {
+  text-shadow: 0 0 40px color-mix(in srgb, var(--color-lamp) 45%, transparent);
+}
+
+/* A 6px dot that lights when its card reveals. */
+.lampdot {
+  background: color-mix(in srgb, var(--color-cream) 22%, transparent);
+  transition:
+    background 0.6s ease 0.35s,
+    box-shadow 0.6s ease 0.35s;
+}
+[data-reveal].in .lampdot {
+  background: var(--color-lamp);
+  box-shadow: 0 0 12px 2px color-mix(in srgb, var(--color-lamp) 70%, transparent);
+}
+
+/* The next lamp on the umbrella thread breathes. */
+.lamp-pulse {
+  animation: lamp-pulse 2.4s ease-in-out infinite;
+}
+@keyframes lamp-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+  50% {
+    box-shadow: 0 0 20px 2px color-mix(in srgb, var(--color-lamp) 60%, transparent);
+  }
+}
+
+/* ---- easter eggs ----------------------------------------------------------- */
+
+.toast {
+  animation: toast-in 0.2s ease;
+}
+@keyframes toast-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* Load-shedding: dark, one flicker of light at 0.4 s for 80 ms, then the power returns at 1.2 s. */
+.outage {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: var(--color-ink);
+  animation: outage 1.5s linear both;
+}
+@keyframes outage {
+  0%,
+  26.6% {
+    opacity: 0.93;
+  }
+  26.7%,
+  32% {
+    opacity: 0;
+  }
+  32.1%,
+  80% {
+    opacity: 0.93;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Kanchenjunga catching the light. */
+.bloom {
+  position: absolute;
+  width: 80vmin;
+  height: 80vmin;
+  translate: -50% -50%;
+  border-radius: 9999px;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  background: radial-gradient(circle, color-mix(in srgb, var(--color-lamp) 20%, transparent), transparent 65%);
+  animation: bloom 1.5s ease-in-out both;
+}
+@keyframes bloom {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lamp-pulse,
+  .toast {
+    animation: none;
+  }
+  .hero-shade,
+  .hero-copy,
+  .lampdot {
+    transition: none;
+  }
+}
