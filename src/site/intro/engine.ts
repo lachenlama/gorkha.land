@@ -15,15 +15,15 @@ export const SPENT = 5; // ...and finished: it can't be relit
 
 const START_LAG = 600; // CTA tap -> timer starts
 const LAMP0_AT = 200; // CTA tap -> the phone lamp lights
-export const DURATION = 60;
-const DAWN_AT = 55;
-const GUSTS = [24, 42];
+export const DURATION = 45;
+const DAWN_AT = 40;
+const GUSTS = [22]; // "buffering…": the lamps flicker and come back, it never takes them
+const TAP_R = 44; // finger-sized: a tap lights the nearest dark lamp within this many px
 const END_MS = 2400;
 const PHASES = [
-  { to: 15, mult: 0.7, hunt: 3, tend: 1.6 },
-  { to: 30, mult: 0.9, hunt: 2.2, tend: 1.4 },
-  { to: 45, mult: 1.1, hunt: 1.6, tend: 1.2 },
-  { to: 99, mult: 1.3, hunt: 1.2, tend: 1.0 },
+  { to: 15, mult: 0.6, hunt: 6, tend: 3 },
+  { to: 30, mult: 0.75, hunt: 4.5, tend: 2.6 },
+  { to: 99, mult: 0.9, hunt: 3.5, tend: 2.2 },
 ];
 
 export type RunResult = { lit: number; chain: number; won: boolean };
@@ -60,7 +60,7 @@ export class Engine {
   // clock
   now = 0;
   startAt = -1;
-  T = -1; // seconds on the 60 s timer
+  T = -1; // seconds on the run timer
   started = false;
   ended = false;
   endAt = 0;
@@ -134,7 +134,7 @@ export class Engine {
     this.H = H;
     this.phone = set === PHONE;
     this.u = this.phone ? 0.8 : 1;
-    this.R = clamp(0.2 * Math.min(W, H), 80, 150);
+    this.R = clamp(0.3 * Math.min(W, H), 110, 170);
     this.n = set.lamps.length;
     set.lamps.forEach((l, i) => {
       [this.px[i], this.py[i]] = imageToScreen(fit, l.x, l.y);
@@ -211,7 +211,7 @@ export class Engine {
     for (let i = 0; i < this.n; i++) {
       if (!this.ok[i] || this.st[i] !== DARK || this.fogged[i]) continue;
       const d = Math.hypot(x - this.px[i], y - this.py[i]);
-      if (d < Math.min(30, this.nn[i] / 2) && d < bd) (best = i), (bd = d);
+      if (d < TAP_R && d < bd) (best = i), (bd = d);
     }
     if (best >= 0) return best === this.eIdx ? this.blaze(best) : this.light(best);
     if (!this.road.done && this.onBackbone(x, y)) {
@@ -245,6 +245,7 @@ export class Engine {
   private lightLamp0() {
     this.lamp0 = true;
     this.light(0);
+    if (!this.still) this.ev.toast("चम्किने थोप्लामा थिच्नुस्, नजिकका बत्ती जोड्नुस्।", "Tap the glowing dots. Lamps close together keep the fog away.", 4500, true);
   }
 
   private light(i: number) {
@@ -406,7 +407,7 @@ export class Engine {
     // clearings: every lamp in a group of 3+ cuts a hole in the fog
     this.ncl = 0;
     for (let i = 0; i < this.n; i++) {
-      const target = this.isLit(i) && this.gs[i] >= 3 ? this.radius(i) : 0;
+      const target = this.isLit(i) && this.gs[i] >= 2 ? this.radius(i) : 0;
       if (target) this.cl[this.ncl++] = i;
       this.clr[i] += (target - this.clr[i]) * Math.min(1, dt * 0.008);
     }
@@ -417,10 +418,10 @@ export class Engine {
     let k = 0;
     while (T >= PHASES[k].to) k++;
     const ph = PHASES[k];
-    const base = (1 - this.chowY) / 50;
+    const base = (1 - this.chowY) / 70;
     // fog: rises; in the last 5 s it falls back at 5x
     if (T >= DAWN_AT) this.F = Math.min(1, this.F + base * 5 * (dt / 1000));
-    else this.F -= base * ph.mult * Math.max(0.25, 1 - 0.03 * this.net) * (dt / 1000);
+    else this.F -= base * ph.mult * Math.max(0.15, 1 - 0.06 * this.net) * (dt / 1000);
     this.dawn += ((T >= DAWN_AT ? 1 : 0) - this.dawn) * Math.min(1, dt / 900);
     if (this.F <= this.chowY) return this.endGame(false);
     if (T >= DURATION) return this.endGame(true);
@@ -428,10 +429,10 @@ export class Engine {
     // lamps in the fog, hunted lamps, embers
     for (let i = 0; i < this.n; i++) {
       const s = this.st[i];
-      if (s === LIT && i && this.fogged[i] && this.gs[i] < 3) this.startHunt(i, 1200);
+      if (s === LIT && i && this.fogged[i] && this.gs[i] < 2) this.startHunt(i, 2400);
       else if (s === HUNTED) {
         if (this.kill[i]) now >= this.dieAt[i] && this.snuff(i);
-        else if (this.gs[i] >= 3) this.st[i] = LIT; // joined up in time: the tendril retreats
+        else if (this.gs[i] >= 2) this.st[i] = LIT; // joined up in time: the tendril retreats
         else {
           this.hv[i] = Math.min(1, (now - this.t0[i]) / this.hdur[i]);
           if (this.hv[i] >= 1) this.snuff(i);
@@ -442,14 +443,14 @@ export class Engine {
     }
 
     // the fog hunts the loneliest lamp
-    if (T >= 6 && T < DAWN_AT && now >= this.nextHunt) {
+    if (T >= 10 && T < DAWN_AT && now >= this.nextHunt) {
       this.nextHunt = now + ph.hunt * 1000;
       let pick = -1, size = 3;
       for (let i = 1; i < this.n; i++) {
         if (this.st[i] !== LIT) continue;
         if (this.gs[i] < size || (this.gs[i] === size && pick >= 0 && this.py[i] > this.py[pick])) (pick = i), (size = this.gs[i]);
       }
-      if (pick >= 0 && size <= 2) this.startHunt(pick, ph.tend * 1000);
+      if (pick >= 0 && size <= 1) this.startHunt(pick, ph.tend * 1000);
     }
 
     this.gust(T);
@@ -466,27 +467,14 @@ export class Engine {
       for (let i = 0; i < this.n; i++) this.tg[i] = +(this.isLit(i) && this.grp[i] === root);
       this.warn = true;
       this.ev.buffering(true);
-      this.ev.say("The wind is coming. Join the train line.");
-      if (this.gi === 0) this.ev.toast("ट्रेनको लाइनसँग जोड्नुस्, हावाले निभाउँदैन।", "Join the train line. The wind can't touch it.", 3500, true);
+      this.ev.say("Buffering…");
     } else if (this.warn && T >= g) {
       this.warn = false;
       this.gi++;
       this.ev.buffering(false);
-      const saved = this.tg.some((f, i) => f && this.isLit(i) && this.gRail[this.grp[i]]);
-      if (saved) {
-        this.sound?.whistle();
-        for (let i = 0; i < this.n; i++) if (this.tg[i]) this.jit[i] = this.now + 800;
-      } else {
-        this.sweepAt = this.now;
-        this.sound?.wind(1600);
-        vibrate([30, 40, 30]);
-        for (let i = 1; i < this.n; i++) {
-          if (!this.tg[i] || !this.isLit(i)) continue;
-          this.st[i] = HUNTED;
-          this.kill[i] = 1;
-          this.dieAt[i] = this.now + 900 * (this.px[i] / this.W);
-        }
-      }
+      this.sound?.wind(900);
+      for (let i = 0; i < this.n; i++) if (this.tg[i]) this.jit[i] = this.now + 1200;
+      this.ev.toast("बफरिङ… आयो!", "Buffering… and we're back.", 2200);
       this.tg.fill(0);
     }
   }

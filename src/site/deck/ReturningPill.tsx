@@ -30,7 +30,7 @@ export default function ReturningPill({ mine, total, onPlay }: { mine: MyLight; 
         {!mine.skipped && <span>· Your light is still on{total ? ` · ${fmt(total)} lights` : ""}</span>}
         <span>·</span>
         <button onClick={onPlay} className="min-h-11 text-lamp underline decoration-lamp/40 underline-offset-4 hover:decoration-lamp">
-          {mine.skipped ? "Light a lamp (60 s) →" : "Play again →"}
+          {mine.skipped ? "Light a lamp (45 s) →" : "Play again →"}
         </button>
       </p>
     </div>

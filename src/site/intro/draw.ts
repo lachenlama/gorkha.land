@@ -144,11 +144,13 @@ export function drawMain(c: CanvasRenderingContext2D, e: Engine, S: Sprites, o: 
   }
 
   // dark windows, hint rings, the gust's target
-  c.fillStyle = CREAM;
+  c.fillStyle = LAMP;
   for (let i = 0; i < n; i++) {
     if (!e.ok[i] || e.fogged[i] || st[i] !== DARK) continue;
-    c.globalAlpha = 0.12;
-    c.fillRect(px[i] - 1.5, py[i] - 1.5, 3, 3);
+    c.globalAlpha = 0.35 + 0.2 * Math.sin(now / 700 + e.ph[i]);
+    c.beginPath();
+    c.arc(px[i], py[i], 3.5 * u, 0, TAU);
+    c.fill();
   }
   c.lineWidth = 1.5;
   if (!e.hintOff && e.started && !e.ended && now - e.startAt < 5600) {
